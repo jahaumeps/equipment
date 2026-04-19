@@ -6,3 +6,13 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+tests/screenshot.png
+
+# Firebase
+firebase-applet-config.json
+firebase-blueprint.json
