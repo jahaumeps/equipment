@@ -1,0 +1,6 @@
+{
+  "name": "MEPS 資訊設備借用系統",
+  "description": "專為 tc.meps.tp.edu.tw 機構設計的資訊設備借用平台，提供設備展示、線上預約及借用管理功能。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

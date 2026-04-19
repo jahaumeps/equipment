@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\\\-]+$'); }
+    function isSignedIn() { return request.auth != null; }
+    function isMepsUser() { 
+      return isSignedIn() && 
+             request.auth.token.email_verified == true &&
+             request.auth.token.email.lower().matches('.*@tc\\.meps\\.tp\\.edu\\.tw'); 
+    }
+    function isAdmin() { 
+      return isMepsUser() && (
+        request.auth.token.email.lower() == 'jahaulin@tc.meps.tp.edu.tw' || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    // Equipment rules
+    match /equipment/{equipmentId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isMepsUser() 
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'currentLoanId', 'activeLoan'])
+        && (
+          (request.resource.data.status == 'loaned' && resource.data.status == 'available') ||
+          (request.resource.data.status == 'available' && resource.data.status == 'loaned')
+        )
+      );
+    }
+
+    // Loan rules
+    match /loans/{loanId} {
+      allow read: if isMepsUser() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow delete: if isAdmin();
+
+      allow create: if isMepsUser() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'active'
+        // Check if equipment exists and is available
+        && exists(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId))
+        && get(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.status == 'available';
+
+      allow update: if isMepsUser() 
+        && (resource.data.userId == request.auth.uid || isAdmin())
+        && request.resource.data.equipmentId == resource.data.equipmentId
+        && request.resource.data.userId == resource.data.userId
+        && (
+          // Allowing return action
+          (request.resource.data.status == 'returned' && resource.data.status == 'active')
+          || isAdmin()
+        );
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isMepsUser();
+      // Users can register themselves as teachers by default, but only admins can escalate to admin
+      allow create: if isMepsUser() && isOwner(userId) && (
+        request.resource.data.role == 'teacher' ||
+        (request.resource.data.role == 'admin' && request.auth.token.email == 'jahaulin@tc.meps.tp.edu.tw')
+      );
+      allow update: if isAdmin() || (isOwner(userId) && request.auth.token.email == 'jahaulin@tc.meps.tp.edu.tw');
+    }
+  }
+}

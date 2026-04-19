@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "Equipment": {
+      "title": "Information Technology Equipment",
+      "description": "Information about a specific piece of equipment available for loan.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the equipment" },
+        "description": { "type": "string", "description": "Detailed description of the equipment" },
+        "accessories": { "type": "string", "description": "Included accessories" },
+        "remarks": { "type": "string", "description": "Additional remarks" },
+        "imageUrl": { "type": "string", "description": "URL to the equipment image" },
+        "category": { "type": "string", "description": "Category (e.g., tablet, laptop)" },
+        "status": { "type": "string", "enum": ["available", "loaned", "maintenance"], "description": "Current availability status" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "description", "status"]
+    },
+    "Loan": {
+      "title": "Equipment Loan Record",
+      "description": "Traceability for equipment checkout and return.",
+      "type": "object",
+      "properties": {
+        "equipmentId": { "type": "string", "description": "Reference to the equipment" },
+        "userId": { "type": "string", "description": "Reference to the borrower" },
+        "userEmail": { "type": "string", "description": "Email of the borrower" },
+        "userName": { "type": "string", "description": "Name of the borrower" },
+        "loanDate": { "type": "string", "format": "date-time", "description": "When the item was borrowed" },
+        "dueDate": { "type": "string", "format": "date-time", "description": "Scheduled return date (2 weeks later)" },
+        "returnDate": { "type": "string", "format": "date-time", "description": "When the item was actually returned" },
+        "status": { "type": "string", "enum": ["active", "returned", "overdue"], "description": "Status of the loan" }
+      },
+      "required": ["equipmentId", "userId", "loanDate", "dueDate", "status"]
+    },
+    "UserMeta": {
+      "title": "User Metadata",
+      "description": "Extended user profile information including admin status.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["admin", "teacher"], "description": "Role of the user" },
+        "email": { "type": "string", "description": "Email address" },
+        "displayName": { "type": "string", "description": "Name from Google profile" }
+      },
+      "required": ["role", "email"]
+    }
+  },
+  "firestore": {
+    "/equipment": { "schema": "Equipment", "description": "Main inventory list" },
+    "/loans": { "schema": "Loan", "description": "History of all loans" },
+    "/users": { "schema": "UserMeta", "description": "Roles and permissions for users" }
+  }
+}
