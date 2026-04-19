@@ -1,6 +1,5 @@
 {
   "name": "react-example",
-  "homepage": "https://jahaumeps.github.io/equipment/",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -31,6 +30,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "adm-zip": "^0.5.17",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
