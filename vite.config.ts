@@ -5,8 +5,7 @@ import {defineConfig, loadEnv} from 'vite';
 
 
 export default defineConfig(({mode}) => {
-  base: '/equipment/', // 必須跟你的 Repository 名稱完全一致
-  // ... 其他設定
+  base: '/equipment/', 
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
