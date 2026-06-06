@@ -570,15 +570,34 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
     return () => { unsubEquip(); unsubLoans(); };
   }, []);
 
+  const handleAdminReturn = async (loan: Loan) => {
+    if (!window.confirm(`確定要幫 ${loan.userName} 歸還「${loan.equipmentName}」嗎？`)) return;
+    try {
+      await updateDoc(doc(db, 'loans', loan.id), {
+        status: 'returned',
+        returnDate: serverTimestamp()
+      });
+
+      await updateDoc(doc(db, 'equipment', loan.equipmentId), {
+        status: 'available',
+        currentLoanId: null,
+        activeLoan: null
+      });
+
+      alert('歸還成功！');
+    } catch (err) {
+      console.error(err);
+      alert('歸還失敗，請稍後再試。');
+    }
+  };
+
   const handleClearAll = async () => {
     setIsClearing(true);
     setShowClearConfirm(false);
     try {
-      // Clear equipment
       const equipSnap = await getDocs(collection(db, 'equipment'));
       const equipDeletes = equipSnap.docs.map(d => deleteDoc(d.ref));
       
-      // Clear loans
       const loanSnap = await getDocs(collection(db, 'loans'));
       const loanDeletes = loanSnap.docs.map(d => deleteDoc(d.ref));
 
@@ -623,7 +642,7 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
           </button>
         </div>
       </header>
-
+ 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><Package className="w-5 h-5"/> 設備庫存 ({items.length})</h3>
@@ -682,7 +701,7 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
             </div>
           </div>
         </div>
-
+ 
         <div className="space-y-6">
           <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><Clock className="w-5 h-5"/> 借出中 ({activeLoans.length})</h3>
           <div className="space-y-3">
@@ -693,9 +712,17 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
                   <UserIcon className="w-3 h-3" />
                   <span>{loan.userName}</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-red-500 mt-2 font-bold tracking-wider pt-2 border-t-2 border-[#27272a]">
-                  <AlertCircle className="w-3 h-3" />
-                  <span>到期：{loan.dueDate ? format(loan.dueDate.toDate(), 'MM/dd') : '-'}</span>
+                <div className="flex justify-between items-center mt-3 pt-2 border-t-2 border-[#27272a] gap-2">
+                  <div className="flex items-center gap-2 text-xs text-red-500 font-bold tracking-wider">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>到期：{loan.dueDate ? format(loan.dueDate.toDate(), 'MM/dd') : '-'}</span>
+                  </div>
+                  <button
+                    onClick={() => handleAdminReturn(loan)}
+                    className="px-3 py-1.5 bg-[#F27D26] text-[#050505] font-bold text-xs uppercase neo-brutal-border hover:bg-[#ff8f39] transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    管理員歸還
+                  </button>
                 </div>
               </div>
             ))}
