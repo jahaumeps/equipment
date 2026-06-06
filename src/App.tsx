@@ -556,9 +556,11 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
   const [showAdd, setShowAdd] = useState(false);
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [activeLoans, setActiveLoans] = useState<Loan[]>([]);
+  const [allLoans, setAllLoans] = useState<Loan[]>([]);
   const [isClearing, setIsClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<Equipment | null>(null);
+  const [adminTab, setAdminTab] = useState<'inventory' | 'loans' | 'stats'>('inventory');
 
   useEffect(() => {
     const unsubEquip = onSnapshot(collection(db, 'equipment'), (snap) => {
@@ -567,7 +569,16 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
     const unsubLoans = onSnapshot(query(collection(db, 'loans'), where('status', '==', 'active')), (snap) => {
       setActiveLoans(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Loan)));
     });
-    return () => { unsubEquip(); unsubLoans(); };
+    const unsubAllLoans = onSnapshot(collection(db, 'loans'), (snap) => {
+      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Loan));
+      docs.sort((a, b) => {
+        const tA = a.loanDate?.seconds || 0;
+        const tB = b.loanDate?.seconds || 0;
+        return tB - tA;
+      });
+      setAllLoans(docs);
+    });
+    return () => { unsubEquip(); unsubLoans(); unsubAllLoans(); };
   }, []);
 
   const handleAdminReturn = async (loan: Loan) => {
@@ -611,6 +622,24 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
     }
   };
 
+  // Calculate stats
+  const totalLoansCount = allLoans.length;
+  const activeLoansCount = activeLoans.length;
+  
+  // Calculate borrowing rate per equipment
+  const equipStats = items.map(item => {
+    const itemLoans = allLoans.filter(l => l.equipmentId === item.id);
+    return {
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      status: item.status,
+      borrowCount: itemLoans.length,
+    };
+  }).sort((a, b) => b.borrowCount - a.borrowCount);
+
+  const maxBorrowCount = Math.max(...equipStats.map(s => s.borrowCount), 1);
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <header className="mb-8 flex flex-col md:flex-row justify-between md:items-end gap-4">
@@ -623,7 +652,7 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
               </span>
             )}
           </div>
-          <p className="meta-label mt-2">維護設備清單與監控外借狀況</p>
+          <p className="meta-label mt-2">維護設備清單、監控外借狀況與數據分析統計</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
           <button 
@@ -642,96 +671,277 @@ function AdminPanelView({ profile }: { profile: UserProfile | null; [key: string
           </button>
         </div>
       </header>
- 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><Package className="w-5 h-5"/> 設備庫存 ({items.length})</h3>
-          <div className="bg-[#18181b] neo-brutal-border overflow-hidden">
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left min-w-[600px]">
-                <thead>
-                  <tr className="bg-[#27272a] border-b-2 border-[#52525b]">
-                    <th className="px-6 py-4 meta-label">設備名稱</th>
-                    <th className="px-6 py-4 meta-label">類別</th>
-                    <th className="px-6 py-4 meta-label">狀態</th>
-                    <th className="px-6 py-4 meta-label text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-[#3f3f46]">
-                  {items.map(item => (
-                    <tr key={item.id} className="hover:bg-[#27272a] transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 neo-brutal-border bg-[#050505] overflow-hidden">
-                            <img src={item.thumbnailUrl || item.imageUrl || `https://picsum.photos/seed/${item.id}/100`} className="w-full h-full object-cover grayscale" alt="" referrerPolicy="no-referrer" />
-                          </div>
-                          <span className="font-bold uppercase tracking-wider">{item.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-[#a1a1aa] uppercase">{item.category}</td>
-                      <td className="px-6 py-4"><Badge status={item.status} /></td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button 
-                            onClick={() => setEditingItem(item)}
-                            className="text-[#f4f4f5] bg-[#3f3f46] hover:bg-[#F27D26] hover:text-[#050505] p-2 neo-brutal-border transition-colors cursor-pointer"
-                            title="編輯設備"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              if (item.status === 'loaned') {
-                                alert('該設備目前借出中，無法直接刪除。請先完成歸還手續。');
-                                return;
-                              }
-                              setItemToDelete(item);
-                            }}
-                            className="text-[#f4f4f5] bg-[#3f3f46] hover:bg-[#ef4444] hover:text-[#050505] p-2 neo-brutal-border transition-colors cursor-pointer"
-                            title="刪除設備"
-                          >
-                             <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
- 
-        <div className="space-y-6">
-          <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><Clock className="w-5 h-5"/> 借出中 ({activeLoans.length})</h3>
-          <div className="space-y-3">
-            {activeLoans.map(loan => (
-              <div key={loan.id} className="bg-[#18181b] p-4 neo-brutal-border flex flex-col">
-                <p className="font-bold text-[#f4f4f5] uppercase tracking-wider">{(loan as any).equipmentName}</p>
-                <div className="flex items-center gap-2 text-xs text-[#a1a1aa] mt-2 tracking-wider">
-                  <UserIcon className="w-3 h-3" />
-                  <span>{loan.userName}</span>
-                </div>
-                <div className="flex justify-between items-center mt-3 pt-2 border-t-2 border-[#27272a] gap-2">
-                  <div className="flex items-center gap-2 text-xs text-red-500 font-bold tracking-wider">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>到期：{loan.dueDate ? format(loan.dueDate.toDate(), 'MM/dd') : '-'}</span>
-                  </div>
-                  <button
-                    onClick={() => handleAdminReturn(loan)}
-                    className="px-3 py-1.5 bg-[#F27D26] text-[#050505] font-bold text-xs uppercase neo-brutal-border hover:bg-[#ff8f39] transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    管理員歸還
-                  </button>
+
+      {/* Admin Sub-Tabs */}
+      <div className="flex border-b-2 border-[#3f3f46] mb-8 overflow-x-auto gap-2 scrollbar-hide">
+        <button 
+          onClick={() => setAdminTab('inventory')}
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider transition-colors cursor-pointer border-t-2 border-x-2 ${
+            adminTab === 'inventory' 
+              ? 'bg-[#18181b] text-[#F27D26] border-[#F27D26] -mb-[2px]' 
+              : 'text-[#a1a1aa] border-transparent hover:text-white'
+          }`}
+        >
+          設備管理 ({items.length})
+        </button>
+        <button 
+          onClick={() => setAdminTab('loans')}
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider transition-colors cursor-pointer border-t-2 border-x-2 ${
+            adminTab === 'loans' 
+              ? 'bg-[#18181b] text-[#F27D26] border-[#F27D26] -mb-[2px]' 
+              : 'text-[#a1a1aa] border-transparent hover:text-white'
+          }`}
+        >
+          所有借用紀錄 ({allLoans.length})
+        </button>
+        <button 
+          onClick={() => setAdminTab('stats')}
+          className={`px-6 py-3 font-bold text-sm uppercase tracking-wider transition-colors cursor-pointer border-t-2 border-x-2 ${
+            adminTab === 'stats' 
+              ? 'bg-[#18181b] text-[#F27D26] border-[#F27D26] -mb-[2px]' 
+              : 'text-[#a1a1aa] border-transparent hover:text-white'
+          }`}
+        >
+          數據與借用率分析
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {adminTab === 'inventory' && (
+          <motion.div 
+            key="inventory"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+          >
+            <div className="lg:col-span-2 space-y-6">
+              <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><Package className="w-5 h-5"/> 設備庫存 ({items.length})</h3>
+              <div className="bg-[#18181b] neo-brutal-border overflow-hidden">
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-left min-w-[600px]">
+                    <thead>
+                      <tr className="bg-[#27272a] border-b-2 border-[#52525b]">
+                        <th className="px-6 py-4 meta-label">設備名稱</th>
+                        <th className="px-6 py-4 meta-label">類別</th>
+                        <th className="px-6 py-4 meta-label">狀態</th>
+                        <th className="px-6 py-4 meta-label text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y-2 divide-[#3f3f46]">
+                      {items.map(item => (
+                        <tr key={item.id} className="hover:bg-[#27272a] transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 neo-brutal-border bg-[#050505] overflow-hidden">
+                                <img src={item.thumbnailUrl || item.imageUrl || `https://picsum.photos/seed/${item.id}/100`} className="w-full h-full object-cover grayscale" alt="" referrerPolicy="no-referrer" />
+                              </div>
+                              <span className="font-bold uppercase tracking-wider">{item.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-[#a1a1aa] uppercase">{item.category}</td>
+                          <td className="px-6 py-4"><Badge status={item.status} /></td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={() => setEditingItem(item)}
+                                className="text-[#f4f4f5] bg-[#3f3f46] hover:bg-[#F27D26] hover:text-[#050505] p-2 neo-brutal-border transition-colors cursor-pointer"
+                                title="編輯設備"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  if (item.status === 'loaned') {
+                                    alert('該設備目前借出中，無法直接刪除。請先完成歸還手續。');
+                                    return;
+                                  }
+                                  setItemToDelete(item);
+                                }}
+                                className="text-[#f4f4f5] bg-[#3f3f46] hover:bg-[#ef4444] hover:text-[#050505] p-2 neo-brutal-border transition-colors cursor-pointer"
+                                title="刪除設備"
+                              >
+                                 <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            ))}
-            {activeLoans.length === 0 && (
-              <div className="text-[#a1a1aa] text-sm uppercase tracking-wider py-4">目前沒有借出的設備</div>
-            )}
-          </div>
-        </div>
-      </div>
+            </div>
+     
+            <div className="space-y-6">
+              <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><Clock className="w-5 h-5"/> 借出中 ({activeLoans.length})</h3>
+              <div className="space-y-3">
+                {activeLoans.map(loan => (
+                  <div key={loan.id} className="bg-[#18181b] p-4 neo-brutal-border flex flex-col">
+                    <p className="font-bold text-[#f4f4f5] uppercase tracking-wider">{(loan as any).equipmentName}</p>
+                    <div className="flex items-center gap-2 text-xs text-[#a1a1aa] mt-2 tracking-wider">
+                      <UserIcon className="w-3 h-3" />
+                      <span>{loan.userName}</span>
+                    </div>
+                    <div className="flex justify-between items-center mt-3 pt-2 border-t-2 border-[#27272a] gap-2">
+                      <div className="flex items-center gap-2 text-xs text-red-500 font-bold tracking-wider">
+                        <AlertCircle className="w-3 h-3" />
+                        <span>到期：{loan.dueDate ? format(loan.dueDate.toDate(), 'MM/dd') : '-'}</span>
+                      </div>
+                      <button
+                        onClick={() => handleAdminReturn(loan)}
+                        className="px-3 py-1.5 bg-[#F27D26] text-[#050505] font-bold text-xs uppercase neo-brutal-border hover:bg-[#ff8f39] transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        管理員歸還
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {activeLoans.length === 0 && (
+                  <div className="text-[#a1a1aa] text-sm uppercase tracking-wider py-4">目前沒有借出的設備</div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {adminTab === 'loans' && (
+          <motion.div 
+            key="loans"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            <h3 className="meta-label flex items-center gap-2 text-lg text-[#F27D26]"><History className="w-5 h-5"/> 所有借用紀錄歷史</h3>
+            <div className="bg-[#18181b] neo-brutal-border overflow-hidden">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left min-w-[700px]">
+                  <thead>
+                    <tr className="bg-[#27272a] border-b-2 border-[#52525b]">
+                      <th className="px-6 py-4 meta-label">設備名稱</th>
+                      <th className="px-6 py-4 meta-label">借用人</th>
+                      <th className="px-6 py-4 meta-label">借出日期</th>
+                      <th className="px-6 py-4 meta-label">應還日期 / 歸還日期</th>
+                      <th className="px-6 py-4 meta-label">經手人</th>
+                      <th className="px-6 py-4 meta-label">狀態</th>
+                      <th className="px-6 py-4 meta-label text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y-2 divide-[#3f3f46]">
+                    {allLoans.map(loan => (
+                      <tr key={loan.id} className="hover:bg-[#27272a] transition-colors text-sm">
+                        <td className="px-6 py-4 font-bold uppercase tracking-wider">{loan.equipmentName}</td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold">{loan.userName}</div>
+                          <div className="text-xs text-[#a1a1aa]">{loan.userEmail}</div>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-[#a1a1aa]">
+                          {loan.loanDate ? format(loan.loanDate.toDate(), 'yyyy/MM/dd HH:mm', { locale: zhTW }) : '-'}
+                        </td>
+                        <td className="px-6 py-4 font-bold">
+                          {loan.status === 'active' ? (
+                            <span className="text-red-500">
+                              應還：{loan.dueDate ? format(loan.dueDate.toDate(), 'yyyy/MM/dd', { locale: zhTW }) : '-'}
+                            </span>
+                          ) : (
+                            <span className="text-[#10B981]">
+                              已還：{loan.returnDate ? format(loan.returnDate.toDate(), 'yyyy/MM/dd HH:mm', { locale: zhTW }) : '-'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-[#a1a1aa]">{loan.handlerName || '-'}</td>
+                        <td className="px-6 py-4">
+                          {loan.status === 'active' ? (
+                            <span className="px-2.5 py-1 text-xs font-bold bg-red-600 text-white rounded-none border border-red-500">借出中</span>
+                          ) : (
+                            <span className="px-2.5 py-1 text-xs font-bold bg-[#3f3f46] text-[#a1a1aa] rounded-none border border-[#52525b]">已歸還</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {loan.status === 'active' && (
+                            <button
+                              onClick={() => handleAdminReturn(loan)}
+                              className="px-3 py-1.5 bg-[#F27D26] text-[#050505] font-bold text-xs uppercase neo-brutal-border hover:bg-[#ff8f39] cursor-pointer"
+                            >
+                              歸還
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {allLoans.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-8 text-center text-[#a1a1aa] uppercase tracking-wider">尚無借用紀錄</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {adminTab === 'stats' && (
+          <motion.div 
+            key="stats"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="bg-[#18181b] p-6 neo-brutal-container text-left">
+                <span className="meta-label text-[#a1a1aa]">總借出次數</span>
+                <p className="text-4xl font-black text-[#F27D26] mt-2">{totalLoansCount} 次</p>
+              </div>
+              <div className="bg-[#18181b] p-6 neo-brutal-container text-left">
+                <span className="meta-label text-[#a1a1aa]">當前借出中</span>
+                <p className="text-4xl font-black text-red-500 mt-2">{activeLoansCount} 件</p>
+              </div>
+              <div className="bg-[#18181b] p-6 neo-brutal-container text-left">
+                <span className="meta-label text-[#a1a1aa]">庫存總數</span>
+                <p className="text-4xl font-black text-[#10B981] mt-2">{items.length} 件</p>
+              </div>
+            </div>
+
+            <div className="bg-[#18181b] p-6 sm:p-8 neo-brutal-container text-left">
+              <h3 className="title-text text-xl sm:text-2xl text-[#F27D26] mb-6 uppercase tracking-wider">設備借用率 / 熱門排行圖表</h3>
+              
+              <div className="space-y-6">
+                {equipStats.map(stat => {
+                  const widthPercent = (stat.borrowCount / maxBorrowCount) * 100;
+                  return (
+                    <div key={stat.id} className="space-y-2">
+                      <div className="flex justify-between items-end gap-4 text-sm font-bold uppercase tracking-wider">
+                        <span className="text-[#f4f4f5] truncate">{stat.name}</span>
+                        <span className="text-[#F27D26] shrink-0">{stat.borrowCount} 次借用</span>
+                      </div>
+                      
+                      <div className="w-full bg-[#27272a] h-6 neo-brutal-border overflow-hidden relative flex items-center">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${widthPercent}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className={`h-full border-r-2 border-[#050505] ${
+                            stat.status === 'loaned' ? 'bg-red-500' : 'bg-[#F27D26]'
+                          }`}
+                        />
+                        {stat.status === 'loaned' && (
+                          <span className="absolute left-2 text-[9px] font-black uppercase text-white bg-[#050505]/75 px-1.5 py-0.5 border border-red-500">借出中</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {items.length === 0 && (
+                  <p className="text-[#a1a1aa] text-center py-6 font-bold uppercase">無設備庫存資料</p>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showAdd && <EquipmentModal onClose={() => setShowAdd(false)} />}
       {editingItem && <EquipmentModal item={editingItem} onClose={() => setEditingItem(null)} />}
